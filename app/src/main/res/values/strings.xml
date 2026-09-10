@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AnimeLib TV</string>
+    <string name="adblock_title">Блокировка рекламы</string>
+    <string name="adblock_standard">Осторожная (рекомендуется)</string>
+    <string name="adblock_enhanced">Усиленная</string>
+    <string name="adblock_off">Выключена</string>
+    <string name="adblock_changed">Настройка сохранена, страница перезагружается</string>
+    <string name="page_load_error">Не удалось загрузить страницу</string>
+    <string name="check_updates">Проверить обновления</string>
+    <string name="update_repository_missing">Укажите GitHub-репозиторий в UpdateConfig.kt</string>
+    <string name="update_checking">Проверяем обновления…</string>
+    <string name="update_latest_installed">Установлена последняя версия</string>
+    <string name="update_check_failed">Не удалось проверить обновления</string>
+    <string name="update_available_title">Доступно обновление</string>
+    <string name="update_available_message">Доступна версия %1$s. Скачать и установить?</string>
+    <string name="update_download">Скачать</string>
+    <string name="update_later">Позже</string>
+    <string name="update_downloading">Загружаем обновление…</string>
+    <string name="update_download_failed">Не удалось скачать или проверить обновление</string>
+</resources>
