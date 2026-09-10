@@ -7,12 +7,27 @@
   let selected = null;
   let ring = null;
 
+  function ensureStyle() {
+    if (document.getElementById('animelib-tv-player-style')) return;
+    const style = document.createElement('style');
+    style.id = 'animelib-tv-player-style';
+    style.textContent = `
+      .fp-quality[data-animelib-tv-player-selected] .fp-quality-dropdown,
+      .fp-playback-settings[data-animelib-tv-player-selected] .dropdown {
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   function visible(element) {
     if (!element || !element.isConnected) return false;
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
-      Number(style.opacity || 1) > 0 && rect.width > 3 && rect.height > 3;
+      Number(style.opacity || 1) > 0 && rect.width > 3 && rect.height > 3 &&
+      rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth;
   }
 
   function ensureRing() {
@@ -35,7 +50,16 @@
 
   function mark(element) {
     if (!visible(element)) return false;
+    document.querySelectorAll('[data-animelib-tv-player-selected]').forEach(function (item) {
+      item.removeAttribute('data-animelib-tv-player-selected');
+    });
     selected = element;
+    const hoverTarget = element.closest('.fp-quality, .fp-playback-settings') || element;
+    hoverTarget.setAttribute('data-animelib-tv-player-selected', 'true');
+    try {
+      hoverTarget.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+      hoverTarget.dispatchEvent(new MouseEvent('mousemove', {bubbles: true}));
+    } catch (_) {}
     const rect = element.getBoundingClientRect();
     const outline = ensureRing();
     Object.assign(outline.style, {
@@ -53,9 +77,14 @@
     return Array.from(document.querySelectorAll('video')).find(visible) || null;
   }
 
+  function playerRoot() {
+    const media = video();
+    return (media && media.closest('[data-video-player]')) || document;
+  }
+
   function playerPresent() {
     return !!video() || !!document.querySelector(
-      '.play_button, .play-background, .play_background, .fp-player, [class*="video-player"], [class*="videoplayer"]'
+      '.play_button, .play-background, .play_background, .fp-player, [data-video-player], [class*="video-player"], [class*="videoplayer"]'
     );
   }
 
@@ -75,16 +104,22 @@
       '.play_button', '.fp-pause-icon', '.fp-play-icon', '.fp-quality',
       '.fp-playback-settings', '.fp-volume-icon-max', '.fp-volume-icon-muted',
       '.fp-x-fullscreen', '.fp-to-fullscreen',
+      '[data-play]', '[data-player-ui="footer"] .awl_a4',
+      '[data-video-subtitles]', '[aria-label="fullscreen"]',
+      '.ayv_e', '.menu-item', '.tabs-item',
       'button', 'a[href]', '[role="button"]', '[tabindex]:not([tabindex="-1"])'
     ].join(',');
-    return Array.from(document.querySelectorAll(selector))
+    return Array.from(playerRoot().querySelectorAll(selector))
       .filter(visible)
-      .filter(function (item) { return !item.hasAttribute('data-animelib-tv-player-focus'); });
+      .filter(function (item) {
+        return !item.hasAttribute('data-animelib-tv-player-focus') &&
+          !item.matches('video, iframe, [data-video-player]');
+      });
   }
 
   function clickInitialPlay() {
-    const play = Array.from(document.querySelectorAll(
-      '.play_button, .play-background, .play_background, [class*="play-button"]'
+    const play = Array.from(playerRoot().querySelectorAll(
+      '.play_button, .play-background, .play_background, [class*="play-button"], [data-play], .fp-x-play'
     )).find(visible);
     if (!play) return false;
     play.click();
@@ -119,7 +154,7 @@
     return mark(items[0]);
   }
 
-  function moveHorizontal(direction) {
+  function moveDirectional(direction) {
     const items = controls();
     if (!items.length) return false;
     if (!selected || !visible(selected) || items.indexOf(selected) < 0) {
@@ -135,8 +170,12 @@
       const rect = item.getBoundingClientRect();
       const dx = rect.left + rect.width / 2 - fromX;
       const dy = rect.top + rect.height / 2 - fromY;
-      if ((direction < 0 && dx >= -3) || (direction > 0 && dx <= 3)) return;
-      const candidate = Math.abs(dx) + Math.abs(dy) * 3;
+      const horizontal = direction === 'left' || direction === 'right';
+      const primary = direction === 'left' ? -dx : direction === 'right' ? dx :
+        direction === 'up' ? -dy : dy;
+      if (primary <= 3) return;
+      const cross = horizontal ? Math.abs(dy) : Math.abs(dx);
+      const candidate = Math.abs(primary) + cross * 2.8;
       if (candidate < score) { score = candidate; best = item; }
     });
     return best ? mark(best) : false;
@@ -144,39 +183,82 @@
 
   function activateSelected() {
     if (selected && visible(selected)) {
+      const nested = selected.matches('.fp-quality, .fp-playback-settings')
+        ? Array.from(selected.querySelectorAll('[role="button"], [tabindex]:not([tabindex="-1"])')).filter(visible)
+        : [];
+      if (nested.length) {
+        return mark(nested.find(function (item) { return item.classList.contains('current'); }) || nested[0]);
+      }
+      const clicked = selected;
+      const before = new Set(controls());
       selected.click();
+      setTimeout(function () {
+        wakeControls();
+        const opened = controls().filter(function (item) {
+          return item !== clicked && !before.has(item);
+        });
+        if (!opened.length) {
+          if (!clicked.isConnected || !visible(clicked)) selectBottomControl();
+          return;
+        }
+        const from = clicked.getBoundingClientRect();
+        const fromX = from.left + from.width / 2;
+        const fromY = from.top + from.height / 2;
+        opened.sort(function (a, b) {
+          const ar = a.getBoundingClientRect();
+          const br = b.getBoundingClientRect();
+          const ad = Math.hypot(ar.left + ar.width / 2 - fromX, ar.top + ar.height / 2 - fromY);
+          const bd = Math.hypot(br.left + br.width / 2 - fromX, br.top + br.height / 2 - fromY);
+          return ad - bd;
+        });
+        mark(opened[0]);
+      }, 100);
       return true;
     }
     togglePlayback();
     return true;
   }
 
-  function handleKey(event) {
-    if (!playerPresent()) return;
-    const code = event.key || event.code;
-    let handled = true;
-    if (code === 'Enter' || code === 'NumpadEnter' || code === ' ' ||
-        code === 'MediaPlayPause' || event.keyCode === 23 || event.keyCode === 85) {
+  function handle(command) {
+    if (!playerPresent()) return false;
+    if (command === 'activate') {
       activateSelected();
-    } else if (code === 'ArrowLeft' || event.keyCode === 21) {
-      if (!selected || !moveHorizontal(-1)) seek(-10);
-    } else if (code === 'ArrowRight' || event.keyCode === 22) {
-      if (!selected || !moveHorizontal(1)) seek(10);
-    } else if (code === 'ArrowDown' || event.keyCode === 20) {
-      selectBottomControl();
-    } else if (code === 'ArrowUp' || event.keyCode === 19) {
-      selected = null;
-      if (ring) ring.style.display = 'none';
-      wakeControls();
+    } else if (command === 'left') {
+      if (selected) moveDirectional('left');
+      else seek(-10);
+    } else if (command === 'right') {
+      if (selected) moveDirectional('right');
+      else seek(10);
+    } else if (command === 'down') {
+      if (!selected) selectBottomControl();
+      else moveDirectional('down');
+    } else if (command === 'up') {
+      if (!selected || !moveDirectional('up')) {
+        selected = null;
+        if (ring) ring.style.display = 'none';
+        wakeControls();
+      }
     } else {
-      handled = false;
+      return false;
     }
-    if (handled) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
+    return true;
   }
 
+  function handleKey(event) {
+    const code = event.key || event.code;
+    const command = code === 'Enter' || code === 'NumpadEnter' || code === ' ' ||
+      code === 'MediaPlayPause' || event.keyCode === 23 || event.keyCode === 85 ? 'activate' :
+      code === 'ArrowLeft' || event.keyCode === 21 ? 'left' :
+      code === 'ArrowRight' || event.keyCode === 22 ? 'right' :
+      code === 'ArrowDown' || event.keyCode === 20 ? 'down' :
+      code === 'ArrowUp' || event.keyCode === 19 ? 'up' : null;
+    if (!command || !handle(command)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  ensureStyle();
+  window.AnimeLibTvPlayer = {handle: handle};
   addEventListener('keydown', handleKey, true);
   addEventListener('resize', function () { if (selected) mark(selected); });
 })();

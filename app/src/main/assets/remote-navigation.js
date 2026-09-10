@@ -13,6 +13,8 @@
   ].join(',');
   const DISCOVER_SELECTOR = [
     '[onclick]', '[class*="cursor-pointer"]', '[class*="clickable"]',
+    '.aot_a4', '.tabs-item', '.menu-item', '[data-scroll-id]',
+    '.awy_e', '.ayv_e', '.awl_a4', '[data-play]',
     '[class*="notification"]', '[class*="notifications"]',
     '[class*="notice"]', '[class*="bell"]',
     '[data-bottom-menu-name="notifications"]',
@@ -66,6 +68,9 @@
       #${SETTINGS_ID}.animelib-tv-focus { opacity: 1 !important; }
       [id^="yandex_rtb"], [class*="yandex-rtb"], iframe[src*="yastatic.net/safeframe"] {
         display: none !important;
+      }
+      .awy_x[data-animelib-tv-hover] .awy_q {
+        opacity: 1 !important;
       }
     `;
     (document.head || document.documentElement).appendChild(style);
@@ -167,6 +172,15 @@
       !element.disabled && element.getAttribute('aria-hidden') !== 'true' && isTopmost;
   }
 
+  function label(element) {
+    return ((element && (element.getAttribute('aria-label') || element.textContent)) || '')
+      .replace(/\s+/g, ' ').trim();
+  }
+
+  function excluded(element) {
+    return /^форум$/i.test(label(element));
+  }
+
   function activeScope() {
     const scopes = Array.from(document.querySelectorAll(
       '[role="dialog"], [role="menu"], [role="tooltip"], .popup, .dropdown-menu'
@@ -182,7 +196,8 @@
 
   function candidates() {
     const scope = activeScope();
-    const items = Array.from((scope || document).querySelectorAll(BASE_SELECTOR)).filter(visible);
+    const items = Array.from((scope || document).querySelectorAll(BASE_SELECTOR))
+      .filter(visible).filter(function (item) { return !excluded(item); });
     return items.filter(function (item, index) {
       const rect = item.getBoundingClientRect();
       const itemNative = item.matches('a[href], button, input, select, textarea, iframe, video');
@@ -205,12 +220,25 @@
   }
 
   function mark(element) {
+    document.querySelectorAll('.awy_x[data-animelib-tv-hover]').forEach(function (item) {
+      item.removeAttribute('data-animelib-tv-hover');
+    });
     currentElement = element || null;
     if (!element) {
       updateFocusRing();
       return;
     }
     let rect = element.getBoundingClientRect();
+    const notification = element.closest && element.closest('.awy_x');
+    if (notification) notification.setAttribute('data-animelib-tv-hover', 'true');
+    try {
+      element.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+      element.dispatchEvent(new MouseEvent('mousemove', {bubbles: true}));
+    } catch (_) {}
+    if (rect.left < 0 || rect.right > innerWidth || rect.top < 0 || rect.bottom > innerHeight) {
+      element.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'nearest'});
+      rect = element.getBoundingClientRect();
+    }
     lastFocusPoint = {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
     updateFocusRing();
   }
@@ -230,6 +258,9 @@
         return ad - bd;
       })[0];
     }
+    const preferred = pool.find(function (element) { return /^каталог$/i.test(label(element)); }) ||
+      pool.find(function (element) { return /^поиск$/i.test(label(element)); });
+    if (preferred) return preferred;
     return pool.sort(function (a, b) {
       const ar = a.getBoundingClientRect();
       const br = b.getBoundingClientRect();
@@ -284,7 +315,31 @@
       }
     });
 
-    if (best) mark(best);
+    if (best) {
+      mark(best);
+      return;
+    }
+
+    const horizontal = direction === 'left' || direction === 'right';
+    let scroller = current.parentElement;
+    while (scroller && scroller !== document.body) {
+      const style = getComputedStyle(scroller);
+      const canScroll = horizontal
+        ? scroller.scrollWidth > scroller.clientWidth + 8 && /auto|scroll/.test(style.overflowX)
+        : scroller.scrollHeight > scroller.clientHeight + 8 && /auto|scroll/.test(style.overflowY);
+      if (canScroll) break;
+      scroller = scroller.parentElement;
+    }
+    const amount = horizontal ? 220 : 170;
+    const sign = direction === 'left' || direction === 'up' ? -1 : 1;
+    if (scroller && scroller !== document.body) {
+      scroller.scrollBy(horizontal
+        ? {left: sign * amount, behavior: 'smooth'}
+        : {top: sign * amount, behavior: 'smooth'});
+    } else if (!horizontal) {
+      window.scrollBy({top: sign * amount, behavior: 'smooth'});
+    }
+    setTimeout(updateFocusRing, 180);
   }
 
   function activate() {
@@ -296,7 +351,7 @@
       const source = (current.getAttribute('src') || '').toLowerCase();
       const looksLikePlayer = /kodik|player|video|anilib/.test(source);
       if (window.AnimeLibTvNative) {
-        if (looksLikePlayer) window.AnimeLibTvNative.enterPlayerMode();
+        if (looksLikePlayer) window.AnimeLibTvNative.enterFramePlayerMode();
         else window.AnimeLibTvNative.enterFrameMode();
       }
       return;
@@ -322,6 +377,10 @@
 
   window.AnimeLibTv = {
     move: move,
+    scrollPage: function (direction) {
+      window.scrollBy({top: direction * 220, behavior: 'smooth'});
+      setTimeout(updateFocusRing, 180);
+    },
     activate: activate,
     setInputValue: function (value) {
       const current = currentElement;

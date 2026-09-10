@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
@@ -40,7 +41,10 @@ class MainActivity : Activity() {
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var inputDialog: AlertDialog? = null
     @Volatile private var playerInputMode = false
+    @Volatile private var playerInFrame = false
     @Volatile private var frameInputMode = false
+    private var lastRemoteDispatchAt = 0L
+    private var lastRemoteKeyCode = KeyEvent.KEYCODE_UNKNOWN
     private val navigationScript by lazy {
         assets.open("remote-navigation.js").bufferedReader().use { it.readText() }
     }
@@ -132,6 +136,7 @@ class MainActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val isPress = event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
+        val isDown = event.action == KeyEvent.ACTION_DOWN
 
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (isPress) handleBack()
@@ -143,7 +148,36 @@ class MainActivity : Activity() {
             return true
         }
 
-        if (fullscreenView != null || playerInputMode) {
+        if (fullscreenView != null) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        if (playerInputMode) {
+            if (playerInFrame) return super.dispatchKeyEvent(event)
+            val playerCommand = when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> "left"
+                KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
+                KeyEvent.KEYCODE_DPAD_UP -> "up"
+                KeyEvent.KEYCODE_DPAD_DOWN -> "down"
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "activate"
+                else -> null
+            }
+            if (playerCommand != null) {
+                val repeatable = playerCommand != "activate"
+                val dispatch = if (repeatable) {
+                    isDown && shouldDispatchRepeat(event, 130L)
+                } else {
+                    isPress
+                }
+                if (dispatch) {
+                    webView.evaluateJavascript(
+                        "window.AnimeLibTvPlayer && window.AnimeLibTvPlayer.handle('$playerCommand')",
+                        null,
+                    )
+                }
+                return true
+            }
             return super.dispatchKeyEvent(event)
         }
 
@@ -153,7 +187,7 @@ class MainActivity : Activity() {
             val forwards = event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
                 event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
             if (backwards || forwards) {
-                if (isPress) dispatchTab(backwards)
+                if (isDown && shouldDispatchRepeat(event, 150L)) dispatchTab(backwards)
                 return true
             }
             return super.dispatchKeyEvent(event)
@@ -164,15 +198,42 @@ class MainActivity : Activity() {
             KeyEvent.KEYCODE_DPAD_RIGHT -> "move('right')"
             KeyEvent.KEYCODE_DPAD_UP -> "move('up')"
             KeyEvent.KEYCODE_DPAD_DOWN -> "move('down')"
+            KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> "scrollPage(-1)"
+            KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> "scrollPage(1)"
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> "activate()"
             else -> null
         }
 
         if (command != null) {
-            if (isPress) webView.evaluateJavascript("window.AnimeLibTv && window.AnimeLibTv.$command", null)
+            val repeatable = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                event.keyCode == KeyEvent.KEYCODE_CHANNEL_UP ||
+                event.keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN ||
+                event.keyCode == KeyEvent.KEYCODE_PAGE_UP ||
+                event.keyCode == KeyEvent.KEYCODE_PAGE_DOWN
+            val dispatch = if (repeatable) {
+                isDown && shouldDispatchRepeat(event, 130L)
+            } else {
+                isPress
+            }
+            if (dispatch) webView.evaluateJavascript("window.AnimeLibTv && window.AnimeLibTv.$command", null)
             return true
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun shouldDispatchRepeat(event: KeyEvent, intervalMs: Long): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (event.repeatCount == 0 || event.keyCode != lastRemoteKeyCode ||
+            now - lastRemoteDispatchAt >= intervalMs
+        ) {
+            lastRemoteKeyCode = event.keyCode
+            lastRemoteDispatchAt = now
+            return true
+        }
+        return false
     }
 
     private fun handleBack() {
@@ -180,6 +241,7 @@ class MainActivity : Activity() {
             fullscreenView != null -> hideFullscreenVideo()
             playerInputMode -> {
                 playerInputMode = false
+                playerInFrame = false
                 webView.evaluateJavascript("window.AnimeLibTv && window.AnimeLibTv.leavePlayer()", null)
             }
             frameInputMode -> {
@@ -188,8 +250,15 @@ class MainActivity : Activity() {
                 webView.evaluateJavascript("window.AnimeLibTv && window.AnimeLibTv.leaveFrame()", null)
             }
             webView.canGoBack() -> webView.goBack()
-            else -> finish()
+            !isHomeUrl(webView.url) -> webView.loadUrl(HOME_URL)
+            else -> Unit
         }
+    }
+
+    private fun isHomeUrl(url: String?): Boolean {
+        val uri = url?.let(Uri::parse) ?: return false
+        return uri.host.equals("v5.animelib.org", ignoreCase = true) &&
+            (uri.path == "/ru" || uri.path == "/ru/")
     }
 
     private fun injectTvNavigation() {
@@ -328,6 +397,7 @@ class MainActivity : Activity() {
         fullscreenContainer.visibility = View.VISIBLE
         webView.visibility = View.GONE
         playerInputMode = true
+        playerInFrame = false
         frameInputMode = false
         view.requestFocus()
         hideSystemUi()
@@ -342,6 +412,7 @@ class MainActivity : Activity() {
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
         playerInputMode = false
+        playerInFrame = false
         frameInputMode = false
         webView.requestFocus()
         hideSystemUi()
@@ -367,6 +438,14 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun enterPlayerMode() {
             playerInputMode = true
+            playerInFrame = false
+            frameInputMode = false
+        }
+
+        @JavascriptInterface
+        fun enterFramePlayerMode() {
+            playerInputMode = true
+            playerInFrame = true
             frameInputMode = false
         }
 
@@ -374,6 +453,7 @@ class MainActivity : Activity() {
         fun enterFrameMode() {
             frameInputMode = true
             playerInputMode = false
+            playerInFrame = false
         }
 
         @JavascriptInterface
@@ -400,6 +480,7 @@ class MainActivity : Activity() {
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             playerInputMode = false
+            playerInFrame = false
             frameInputMode = false
             super.onPageStarted(view, url, favicon)
         }
