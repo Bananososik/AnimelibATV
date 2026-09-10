@@ -27,7 +27,7 @@
 
 ## Сборка
 
-Требуются Android Studio с Android SDK Platform 37, JDK 17 и Android SDK Build
+Требуются Android Studio с Android SDK Platform 36, JDK 17 и Android SDK Build
 Tools 36.0.0. Откройте корень проекта в Android Studio, дождитесь синхронизации
 Gradle и соберите `debug`-вариант.
 

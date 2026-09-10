@@ -9,7 +9,7 @@ val signingKeyPassword = providers.environmentVariable("ANDROID_SIGNING_KEY_PASS
 
 android {
     namespace = "org.animelibtv.app"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "org.animelibtv.app"
