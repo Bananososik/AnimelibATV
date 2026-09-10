@@ -292,6 +292,7 @@
     if (!current) return;
     if (current.tagName === 'IFRAME') {
       current.focus();
+      try { current.contentWindow.focus(); } catch (_) {}
       const source = (current.getAttribute('src') || '').toLowerCase();
       const looksLikePlayer = /kodik|player|video|anilib/.test(source);
       if (window.AnimeLibTvNative) {

@@ -26,6 +26,8 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.EditText
 import android.widget.Toast
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 import java.io.IOException
 
@@ -41,6 +43,9 @@ class MainActivity : Activity() {
     @Volatile private var frameInputMode = false
     private val navigationScript by lazy {
         assets.open("remote-navigation.js").bufferedReader().use { it.readText() }
+    }
+    private val playerNavigationScript by lazy {
+        assets.open("player-navigation.js").bufferedReader().use { it.readText() }
     }
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
@@ -78,6 +83,13 @@ class MainActivity : Activity() {
         }
 
         webView.addJavascriptInterface(WebBridge(), "AnimeLibTvNative")
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                playerNavigationScript,
+                setOf("*"),
+            )
+        }
         webView.webViewClient = AnimeLibWebViewClient()
         webView.webChromeClient = AnimeLibChromeClient()
         webView.isFocusable = true

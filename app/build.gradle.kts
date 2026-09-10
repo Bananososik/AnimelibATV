@@ -15,8 +15,8 @@ android {
         applicationId = "org.animelibtv.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.2.3"
+        versionCode = 6
+        versionName = "0.2.4"
     }
 
     signingConfigs {
@@ -49,4 +49,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+}
+
+dependencies {
+    implementation("androidx.webkit:webkit:1.17.0")
 }
