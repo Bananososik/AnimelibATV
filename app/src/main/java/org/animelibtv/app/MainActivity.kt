@@ -77,6 +77,7 @@ class MainActivity : Activity() {
         webView.webChromeClient = AnimeLibChromeClient()
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
+        webView.setInitialScale(50)
         webView.requestFocus()
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {

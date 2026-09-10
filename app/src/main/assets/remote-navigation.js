@@ -4,6 +4,7 @@
 
   const STYLE_ID = 'animelib-tv-focus-style';
   const SETTINGS_ID = 'animelib-tv-settings';
+  const FOCUS_ID = 'animelib-tv-focus-ring';
   const BASE_SELECTOR = [
     'a[href]', 'button', 'input', 'select', 'textarea',
     '[role="button"]', '[role="menuitem"]', '[role="option"]',
@@ -20,6 +21,9 @@
     '[aria-label*="notification" i]', '[title*="notification" i]'
   ].join(',');
   let lastFocusPoint = null;
+  let currentElement = null;
+  let observedViewport = null;
+  let viewportObserver = null;
 
   function ensureDesktopViewport() {
     let meta = document.querySelector('meta[name="viewport"]');
@@ -29,7 +33,16 @@
       (document.head || document.documentElement).appendChild(meta);
     }
     const desktopContent = 'width=1920, initial-scale=0.5, minimum-scale=0.5, maximum-scale=0.5, user-scalable=no';
-    if (meta.content !== desktopContent) meta.content = desktopContent;
+    if (meta.content !== desktopContent) {
+      meta.content = desktopContent;
+      window.dispatchEvent(new Event('resize'));
+    }
+    if (observedViewport !== meta) {
+      if (viewportObserver) viewportObserver.disconnect();
+      observedViewport = meta;
+      viewportObserver = new MutationObserver(ensureDesktopViewport);
+      viewportObserver.observe(meta, {attributes: true, attributeFilter: ['content']});
+    }
   }
 
   function installStyle() {
@@ -42,8 +55,6 @@
         outline-offset: 3px !important;
         box-shadow: 0 0 0 3px rgba(20, 8, 30, .9), 0 0 22px rgba(184, 120, 255, .95) !important;
         transition: outline-color .12s ease !important;
-        position: relative !important;
-        z-index: 2147483000 !important;
       }
       #${SETTINGS_ID} {
         position: fixed !important; right: 18px !important; bottom: 18px !important;
@@ -58,6 +69,41 @@
       }
     `;
     (document.head || document.documentElement).appendChild(style);
+  }
+
+  function focusRing() {
+    let ring = document.getElementById(FOCUS_ID);
+    if (ring || !document.body) return ring;
+    ring = document.createElement('div');
+    ring.id = FOCUS_ID;
+    ring.setAttribute('aria-hidden', 'true');
+    const style = ring.style;
+    style.setProperty('position', 'fixed', 'important');
+    style.setProperty('display', 'none', 'important');
+    style.setProperty('pointer-events', 'none', 'important');
+    style.setProperty('box-sizing', 'border-box', 'important');
+    style.setProperty('border', '6px solid #b878ff', 'important');
+    style.setProperty('border-radius', '8px', 'important');
+    style.setProperty('box-shadow', '0 0 0 4px rgba(20, 8, 30, .9), 0 0 28px rgba(184, 120, 255, .98)', 'important');
+    style.setProperty('z-index', '2147483647', 'important');
+    document.body.appendChild(ring);
+    return ring;
+  }
+
+  function updateFocusRing() {
+    const ring = focusRing();
+    if (!ring) return;
+    if (!currentElement || !currentElement.isConnected || !visible(currentElement)) {
+      ring.style.setProperty('display', 'none', 'important');
+      return;
+    }
+    const rect = currentElement.getBoundingClientRect();
+    const padding = 5;
+    ring.style.setProperty('display', 'block', 'important');
+    ring.style.setProperty('left', `${Math.max(0, rect.left - padding)}px`, 'important');
+    ring.style.setProperty('top', `${Math.max(0, rect.top - padding)}px`, 'important');
+    ring.style.setProperty('width', `${Math.min(innerWidth - rect.left + padding, rect.width + padding * 2)}px`, 'important');
+    ring.style.setProperty('height', `${Math.min(innerHeight - rect.top + padding, rect.height + padding * 2)}px`, 'important');
   }
 
   function installSettingsButton() {
@@ -83,7 +129,7 @@
         element.getAttribute('data-bottom-menu-name'), element.getAttribute('data-dialog'),
         element.getAttribute('data-popup')
       ].filter(Boolean).join(' ').toLowerCase();
-      const className = typeof element.className === 'string' ? element.className.toLowerCase() : '';
+      const className = (element.getAttribute('class') || '').toLowerCase();
       const vueEvents = element._vei && Object.keys(element._vei).some(function (key) {
         return key.toLowerCase().includes('click');
       });
@@ -91,7 +137,20 @@
         getComputedStyle(element).cursor === 'pointer' ||
         /уведом|notification/.test(attributes) ||
         /(notification|notice)[_-]*(item|card|button|link)|bell/.test(className);
-      if (isAction) element.setAttribute('data-animelib-tv-focusable', 'true');
+      if (!isAction) return;
+      let target = element;
+      const isNotificationIcon = /уведом|notification|bell/.test(`${attributes} ${className}`);
+      if (isNotificationIcon) {
+        let parent = element.parentElement;
+        while (parent && parent !== document.body && getComputedStyle(parent).cursor === 'pointer') {
+          const rect = parent.getBoundingClientRect();
+          if (rect.width > 180 || rect.height > 100) break;
+          target = parent;
+          parent = parent.parentElement;
+        }
+      }
+      if (target !== element) element.removeAttribute('data-animelib-tv-focusable');
+      target.setAttribute('data-animelib-tv-focusable', 'true');
     });
   }
 
@@ -108,8 +167,22 @@
       !element.disabled && element.getAttribute('aria-hidden') !== 'true' && isTopmost;
   }
 
+  function activeScope() {
+    const scopes = Array.from(document.querySelectorAll(
+      '[role="dialog"], [role="menu"], [role="tooltip"], .popup, .dropdown-menu'
+    )).filter(function (element) {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' &&
+        rect.width > 40 && rect.height > 40 && rect.bottom > 0 && rect.top < innerHeight &&
+        rect.right > 0 && rect.left < innerWidth;
+    });
+    return scopes[scopes.length - 1] || null;
+  }
+
   function candidates() {
-    const items = Array.from(document.querySelectorAll(BASE_SELECTOR)).filter(visible);
+    const scope = activeScope();
+    const items = Array.from((scope || document).querySelectorAll(BASE_SELECTOR)).filter(visible);
     return items.filter(function (item, index) {
       const rect = item.getBoundingClientRect();
       const itemNative = item.matches('a[href], button, input, select, textarea, iframe, video');
@@ -132,33 +205,14 @@
   }
 
   function mark(element) {
-    document.querySelectorAll('.animelib-tv-focus').forEach(function (old) {
-      old.classList.remove('animelib-tv-focus');
-      old.style.removeProperty('outline');
-      old.style.removeProperty('outline-offset');
-      old.style.removeProperty('box-shadow');
-    });
-    if (!element) return;
-    if (element.tabIndex < 0) element.setAttribute('tabindex', '-1');
-    element.classList.add('animelib-tv-focus');
-    // Direct CSSOM properties also work on OAuth pages whose CSP rejects
-    // dynamically inserted <style> rules.
-    element.style.setProperty('outline', '6px solid #b878ff', 'important');
-    element.style.setProperty('outline-offset', '4px', 'important');
-    element.style.setProperty(
-      'box-shadow',
-      '0 0 0 4px rgba(20, 8, 30, .9), 0 0 28px rgba(184, 120, 255, .98)',
-      'important'
-    );
-    try { element.focus({preventScroll: true}); } catch (_) { element.focus(); }
-    let rect = element.getBoundingClientRect();
-    const margin = 32;
-    if (rect.top < margin || rect.bottom > innerHeight - margin ||
-        rect.left < margin || rect.right > innerWidth - margin) {
-      element.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'auto'});
-      rect = element.getBoundingClientRect();
+    currentElement = element || null;
+    if (!element) {
+      updateFocusRing();
+      return;
     }
+    let rect = element.getBoundingClientRect();
     lastFocusPoint = {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    updateFocusRing();
   }
 
   function initial(items) {
@@ -179,14 +233,18 @@
     return pool.sort(function (a, b) {
       const ar = a.getBoundingClientRect();
       const br = b.getBoundingClientRect();
-      return (ar.top - br.top) || (ar.left - br.left);
+      const rowDifference = Math.floor(Math.max(0, ar.top) / 40) -
+        Math.floor(Math.max(0, br.top) / 40);
+      return rowDifference || (ar.left - br.left) || (ar.top - br.top);
     })[0];
   }
 
   function move(direction) {
     const items = candidates();
     if (!items.length) return;
-    let current = document.querySelector('.animelib-tv-focus');
+    let current = currentElement;
+    const scope = activeScope();
+    if (scope && current && !scope.contains(current)) current = null;
     if (!current || !visible(current)) {
       const active = items.includes(document.activeElement) ? document.activeElement : null;
       mark(active || initial(items));
@@ -213,6 +271,7 @@
       const overlap = horizontal
         ? Math.min(from.bottom, rect.bottom) - Math.max(from.top, rect.top)
         : Math.min(from.right, rect.right) - Math.max(from.left, rect.left);
+      if (overlap <= 0 && cross > primary * 1.25) return;
       const primaryGap = direction === 'left' ? Math.max(0, from.left - rect.right)
         : direction === 'right' ? Math.max(0, rect.left - from.right)
         : direction === 'up' ? Math.max(0, from.top - rect.bottom)
@@ -229,7 +288,7 @@
   }
 
   function activate() {
-    const current = document.querySelector('.animelib-tv-focus') || document.activeElement;
+    const current = currentElement || document.activeElement;
     if (!current) return;
     if (current.tagName === 'IFRAME') {
       current.focus();
@@ -260,12 +319,12 @@
     activate: activate,
     leavePlayer: function () {
       if (document.activeElement) document.activeElement.blur();
-      const player = document.querySelector('.animelib-tv-focus');
+      const player = currentElement;
       if (player) mark(player);
     },
     leaveFrame: function () {
       if (document.activeElement) document.activeElement.blur();
-      const frame = document.querySelector('.animelib-tv-focus');
+      const frame = currentElement;
       if (frame) mark(frame);
     }
   };
@@ -273,7 +332,10 @@
   ensureDesktopViewport();
   installStyle();
   installSettingsButton();
+  focusRing();
   prepareInteractiveElements();
+  window.addEventListener('resize', updateFocusRing, {passive: true});
+  document.addEventListener('scroll', updateFocusRing, {passive: true, capture: true});
   let refreshScheduled = false;
   new MutationObserver(function () {
     if (refreshScheduled) return;
