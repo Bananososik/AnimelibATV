@@ -18,4 +18,5 @@
     <string name="update_later">Позже</string>
     <string name="update_downloading">Загружаем обновление…</string>
     <string name="update_download_failed">Не удалось скачать или проверить обновление</string>
+    <string name="input_value_title">Введите значение</string>
 </resources>

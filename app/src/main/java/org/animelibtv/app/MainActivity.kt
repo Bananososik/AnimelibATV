@@ -7,11 +7,13 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -22,7 +24,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.EditText
 import android.widget.Toast
+import org.json.JSONObject
 import java.io.IOException
 
 class MainActivity : Activity() {
@@ -32,6 +36,7 @@ class MainActivity : Activity() {
     private lateinit var updateManager: UpdateManager
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
+    private var inputDialog: AlertDialog? = null
     @Volatile private var playerInputMode = false
     @Volatile private var frameInputMode = false
     private val navigationScript by lazy {
@@ -105,6 +110,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        inputDialog?.dismiss()
         updateManager.shutdown()
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.removeJavascriptInterface("AnimeLibTvNative")
@@ -228,14 +234,65 @@ class MainActivity : Activity() {
         webView.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB, 0, metaState))
     }
 
-    private fun showKeyboard() {
-        webView.postDelayed({
-            webView.requestFocus()
-            getSystemService(InputMethodManager::class.java).showSoftInput(
-                webView,
-                0,
-            )
-        }, 100)
+    private fun showNativeInput(initialValue: String, type: String, inputMode: String, placeholder: String) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            inputDialog?.dismiss()
+            val editor = EditText(this).apply {
+                setText(initialValue)
+                setSelection(text.length)
+                hint = placeholder
+                isSingleLine = true
+                imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                this.inputType = when {
+                    type.equals("password", true) ->
+                        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    type.equals("email", true) ->
+                        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                    type.equals("tel", true) -> InputType.TYPE_CLASS_PHONE
+                    type.equals("number", true) || inputMode.equals("numeric", true) ||
+                        inputMode.equals("decimal", true) -> InputType.TYPE_CLASS_NUMBER
+                    else -> InputType.TYPE_CLASS_TEXT
+                }
+            }
+            lateinit var dialog: AlertDialog
+            fun submit() {
+                val encodedValue = JSONObject.quote(editor.text.toString())
+                webView.evaluateJavascript(
+                    "window.AnimeLibTv && window.AnimeLibTv.setInputValue($encodedValue)",
+                    null,
+                )
+                dialog.dismiss()
+            }
+            dialog = AlertDialog.Builder(this)
+                .setTitle(if (placeholder.isBlank()) getString(R.string.input_value_title) else placeholder)
+                .setView(editor)
+                .setPositiveButton(android.R.string.ok) { _, _ -> submit() }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+            editor.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    submit()
+                    true
+                } else {
+                    false
+                }
+            }
+            dialog.setOnDismissListener {
+                if (inputDialog === dialog) inputDialog = null
+            }
+            inputDialog = dialog
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            dialog.show()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            editor.requestFocus()
+            editor.postDelayed({
+                getSystemService(InputMethodManager::class.java).showSoftInput(
+                    editor,
+                    InputMethodManager.SHOW_IMPLICIT,
+                )
+            }, 150)
+        }
     }
 
     private fun hideKeyboard() {
@@ -308,8 +365,8 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun showKeyboard() {
-            this@MainActivity.showKeyboard()
+        fun showInput(initialValue: String, type: String, inputMode: String, placeholder: String) {
+            showNativeInput(initialValue, type, inputMode, placeholder)
         }
     }
 

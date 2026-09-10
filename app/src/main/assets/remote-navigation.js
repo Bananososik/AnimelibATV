@@ -306,9 +306,14 @@
       return;
     }
     if (current.matches('input, textarea, select, [contenteditable="true"]')) {
-      current.focus();
-      current.click();
-      if (window.AnimeLibTvNative) window.AnimeLibTvNative.showKeyboard();
+      if (window.AnimeLibTvNative) {
+        window.AnimeLibTvNative.showInput(
+          current.value || current.textContent || '',
+          current.getAttribute('type') || '',
+          current.getAttribute('inputmode') || '',
+          current.getAttribute('placeholder') || current.getAttribute('aria-label') || ''
+        );
+      }
       return;
     }
     current.click();
@@ -317,6 +322,27 @@
   window.AnimeLibTv = {
     move: move,
     activate: activate,
+    setInputValue: function (value) {
+      const current = currentElement;
+      if (!current || !current.isConnected ||
+          !current.matches('input, textarea, select, [contenteditable="true"]')) return;
+      if (current.matches('[contenteditable="true"]')) {
+        current.textContent = value;
+      } else {
+        const prototype = current.tagName === 'TEXTAREA'
+          ? HTMLTextAreaElement.prototype
+          : current.tagName === 'SELECT'
+            ? HTMLSelectElement.prototype
+            : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(prototype, 'value');
+        if (setter && setter.set) setter.set.call(current, value);
+        else current.value = value;
+      }
+      current.dispatchEvent(new Event('input', {bubbles: true}));
+      current.dispatchEvent(new Event('change', {bubbles: true}));
+      current.focus({preventScroll: true});
+      updateFocusRing();
+    },
     leavePlayer: function () {
       if (document.activeElement) document.activeElement.blur();
       const player = currentElement;
