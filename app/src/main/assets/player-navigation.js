@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  if (window.top === window || window.__animeLibTvPlayerInstalled) return;
+  if (window.__animeLibTvPlayerInstalled) return;
   window.__animeLibTvPlayerInstalled = true;
 
   let selected = null;
