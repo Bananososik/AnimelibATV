@@ -370,12 +370,24 @@
       }
       return;
     }
-    if (current.tagName === 'VIDEO') {
-      current.focus();
+    const media = Array.from(document.querySelectorAll('video')).find(function (element) {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' &&
+        rect.width > 8 && rect.height > 8 && rect.bottom > 0 && rect.top < innerHeight &&
+        rect.right > 0 && rect.left < innerWidth;
+    });
+    const currentRect = current.getBoundingClientRect();
+    const mediaRect = media && media.getBoundingClientRect();
+    const coversVideo = mediaRect &&
+      Math.abs(currentRect.left - mediaRect.left) < 8 &&
+      Math.abs(currentRect.top - mediaRect.top) < 8 &&
+      Math.abs(currentRect.width - mediaRect.width) < 16 &&
+      Math.abs(currentRect.height - mediaRect.height) < 16;
+    if (media && (current === media || current.contains(media) || media.contains(current) || coversVideo)) {
+      media.focus();
+      if (window.AnimeLibTvPlayer) window.AnimeLibTvPlayer.handle('activate');
       if (window.AnimeLibTvNative) window.AnimeLibTvNative.enterPlayerMode();
-      setTimeout(function () {
-        if (window.AnimeLibTvPlayer) window.AnimeLibTvPlayer.handle('activate');
-      }, 0);
       return;
     }
     if (current.matches('input, textarea, select, [contenteditable="true"]')) {
