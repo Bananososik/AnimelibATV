@@ -127,8 +127,13 @@
   }
 
   function togglePlayback() {
-    if (clickInitialPlay()) return;
     const media = video();
+    if (clickInitialPlay()) {
+      setTimeout(function () {
+        if (media && media.paused) media.play().catch(function () {});
+      }, 80);
+      return;
+    }
     if (!media) return;
     if (media.paused) media.play().catch(function () {});
     else media.pause();
@@ -183,6 +188,11 @@
 
   function activateSelected() {
     if (selected && visible(selected)) {
+      if (selected.matches('.fp-x-fullscreen, .fp-to-fullscreen') ||
+          selected.closest('.fp-x-fullscreen, .fp-to-fullscreen')) {
+        if (window.AnimeLibTvNative) window.AnimeLibTvNative.toggleFrameFullscreen();
+        return true;
+      }
       const nested = selected.matches('.fp-quality, .fp-playback-settings')
         ? Array.from(selected.querySelectorAll('[role="button"], [tabindex]:not([tabindex="-1"])')).filter(visible)
         : [];
@@ -257,8 +267,22 @@
     event.stopImmediatePropagation();
   }
 
+  function handleKeyRelease(event) {
+    const code = event.key || event.code;
+    const handled = code === 'Enter' || code === 'NumpadEnter' || code === ' ' ||
+      code === 'MediaPlayPause' || code === 'ArrowLeft' || code === 'ArrowRight' ||
+      code === 'ArrowDown' || code === 'ArrowUp' ||
+      event.keyCode === 23 || event.keyCode === 85 ||
+      event.keyCode === 21 || event.keyCode === 22 ||
+      event.keyCode === 20 || event.keyCode === 19;
+    if (!handled || !playerPresent()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
   ensureStyle();
   window.AnimeLibTvPlayer = {handle: handle};
   addEventListener('keydown', handleKey, true);
+  addEventListener('keyup', handleKeyRelease, true);
   addEventListener('resize', function () { if (selected) mark(selected); });
 })();

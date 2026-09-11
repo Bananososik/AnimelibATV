@@ -72,6 +72,20 @@
       .awy_x[data-animelib-tv-hover] .awy_q {
         opacity: 1 !important;
       }
+      iframe.animelib-tv-frame-fullscreen {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        z-index: 2147483645 !important;
+        background: #000 !important;
+      }
+      html.animelib-tv-frame-fullscreen-open,
+      body.animelib-tv-frame-fullscreen-open {
+        overflow: hidden !important;
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -359,6 +373,9 @@
     if (current.tagName === 'VIDEO') {
       current.focus();
       if (window.AnimeLibTvNative) window.AnimeLibTvNative.enterPlayerMode();
+      setTimeout(function () {
+        if (window.AnimeLibTvPlayer) window.AnimeLibTvPlayer.handle('activate');
+      }, 0);
       return;
     }
     if (current.matches('input, textarea, select, [contenteditable="true"]')) {
@@ -412,6 +429,20 @@
       if (document.activeElement) document.activeElement.blur();
       const frame = currentElement;
       if (frame) mark(frame);
+    },
+    setFrameFullscreen: function (enabled) {
+      const frame = (currentElement && currentElement.tagName === 'IFRAME')
+        ? currentElement
+        : (document.activeElement && document.activeElement.tagName === 'IFRAME'
+          ? document.activeElement
+          : document.querySelector('iframe.animelib-tv-frame-fullscreen'));
+      if (!frame) return;
+      frame.classList.toggle('animelib-tv-frame-fullscreen', !!enabled);
+      document.documentElement.classList.toggle('animelib-tv-frame-fullscreen-open', !!enabled);
+      if (document.body) document.body.classList.toggle('animelib-tv-frame-fullscreen-open', !!enabled);
+      frame.focus();
+      try { frame.contentWindow.focus(); } catch (_) {}
+      mark(frame);
     }
   };
 

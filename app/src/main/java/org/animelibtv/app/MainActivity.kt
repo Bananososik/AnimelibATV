@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     @Volatile private var playerInputMode = false
     @Volatile private var playerInFrame = false
     @Volatile private var frameInputMode = false
+    @Volatile private var frameCssFullscreen = false
     private var lastRemoteDispatchAt = 0L
     private var lastRemoteKeyCode = KeyEvent.KEYCODE_UNKNOWN
     private val navigationScript by lazy {
@@ -76,7 +77,7 @@ class MainActivity : Activity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             userAgentString = desktopUserAgent()
-            mediaPlaybackRequiresUserGesture = true
+            mediaPlaybackRequiresUserGesture = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
@@ -153,7 +154,18 @@ class MainActivity : Activity() {
         }
 
         if (playerInputMode) {
-            if (playerInFrame) return super.dispatchKeyEvent(event)
+            if (playerInFrame) {
+                val playerKey = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                    event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                    event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                    event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                    event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                    event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                    event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                if (playerKey && event.action == KeyEvent.ACTION_UP) return true
+                return super.dispatchKeyEvent(event)
+            }
             val playerCommand = when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> "left"
                 KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
@@ -224,6 +236,11 @@ class MainActivity : Activity() {
         return super.dispatchKeyEvent(event)
     }
 
+    @Deprecated("Handled for TV remotes that route Back through Activity instead of dispatchKeyEvent")
+    override fun onBackPressed() {
+        handleBack()
+    }
+
     private fun shouldDispatchRepeat(event: KeyEvent, intervalMs: Long): Boolean {
         val now = SystemClock.uptimeMillis()
         if (event.repeatCount == 0 || event.keyCode != lastRemoteKeyCode ||
@@ -236,9 +253,18 @@ class MainActivity : Activity() {
         return false
     }
 
+    private fun setFrameCssFullscreen(enabled: Boolean) {
+        frameCssFullscreen = enabled
+        webView.evaluateJavascript(
+            "window.AnimeLibTv && window.AnimeLibTv.setFrameFullscreen($enabled)",
+            null,
+        )
+    }
+
     private fun handleBack() {
         when {
             fullscreenView != null -> hideFullscreenVideo()
+            frameCssFullscreen -> setFrameCssFullscreen(false)
             playerInputMode -> {
                 playerInputMode = false
                 playerInFrame = false
@@ -450,6 +476,11 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun toggleFrameFullscreen() {
+            runOnUiThread { setFrameCssFullscreen(!frameCssFullscreen) }
+        }
+
+        @JavascriptInterface
         fun enterFrameMode() {
             frameInputMode = true
             playerInputMode = false
@@ -482,6 +513,7 @@ class MainActivity : Activity() {
             playerInputMode = false
             playerInFrame = false
             frameInputMode = false
+            frameCssFullscreen = false
             super.onPageStarted(view, url, favicon)
         }
 
