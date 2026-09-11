@@ -15,8 +15,8 @@ android {
         applicationId = "org.animelibtv.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.3.3"
+        versionCode = 12
+        versionName = "0.3.4"
     }
 
     signingConfigs {

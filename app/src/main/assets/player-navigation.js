@@ -73,6 +73,14 @@
     return true;
   }
 
+  function clearSelection() {
+    document.querySelectorAll('[data-animelib-tv-player-selected]').forEach(function (item) {
+      item.removeAttribute('data-animelib-tv-player-selected');
+    });
+    selected = null;
+    if (ring) ring.style.display = 'none';
+  }
+
   function video() {
     return Array.from(document.querySelectorAll('video')).find(visible) || null;
   }
@@ -290,7 +298,7 @@
   }
 
   ensureStyle();
-  window.AnimeLibTvPlayer = {handle: handle};
+  window.AnimeLibTvPlayer = {handle: handle, clearSelection: clearSelection};
   addEventListener('keydown', handleKey, true);
   addEventListener('keyup', handleKeyRelease, true);
   addEventListener('resize', function () { if (selected) mark(selected); });

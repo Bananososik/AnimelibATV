@@ -473,7 +473,8 @@
       if (document.body) document.body.classList.toggle('animelib-tv-frame-fullscreen-open', !!enabled);
       frame.focus();
       try { frame.contentWindow.focus(); } catch (_) {}
-      mark(frame);
+      if (enabled) mark(null);
+      else mark(frame);
     },
     setVideoFullscreen: function (enabled) {
       const existing = document.querySelector('.animelib-tv-video-fullscreen');
@@ -485,7 +486,13 @@
       root.classList.toggle('animelib-tv-video-fullscreen', !!enabled);
       document.documentElement.classList.toggle('animelib-tv-video-fullscreen-open', !!enabled);
       if (document.body) document.body.classList.toggle('animelib-tv-video-fullscreen-open', !!enabled);
-      if (media) media.focus();
+      if (window.AnimeLibTvPlayer) window.AnimeLibTvPlayer.clearSelection();
+      if (enabled) {
+        mark(null);
+      } else if (media) {
+        media.focus();
+        mark(media);
+      }
     }
   };
 
