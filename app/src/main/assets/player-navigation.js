@@ -160,6 +160,7 @@
   }
 
   function moveDirectional(direction) {
+    wakeControls();
     const items = controls();
     if (!items.length) return false;
     if (!selected || !visible(selected) || items.indexOf(selected) < 0) {
@@ -187,12 +188,20 @@
   }
 
   function activateSelected() {
-    if (selected && visible(selected)) {
-      if (selected.matches('.fp-x-fullscreen, .fp-to-fullscreen') ||
-          selected.closest('.fp-x-fullscreen, .fp-to-fullscreen')) {
-        if (window.AnimeLibTvNative) window.AnimeLibTvNative.toggleFrameFullscreen();
+    wakeControls();
+    if (selected && selected.isConnected) {
+      const fullscreenControl = selected.matches('.fp-x-fullscreen, .fp-to-fullscreen, [aria-label="fullscreen"]') ||
+        selected.closest('.fp-x-fullscreen, .fp-to-fullscreen, [aria-label="fullscreen"]') ||
+        selected.querySelector('[data-icon="expand"], .fa-expand');
+      if (fullscreenControl) {
+        if (window.AnimeLibTvNative) {
+          if (window.top === window) window.AnimeLibTvNative.toggleVideoFullscreen();
+          else window.AnimeLibTvNative.toggleFrameFullscreen();
+        }
         return true;
       }
+    }
+    if (selected && visible(selected)) {
       const nested = selected.matches('.fp-quality, .fp-playback-settings')
         ? Array.from(selected.querySelectorAll('[role="button"], [tabindex]:not([tabindex="-1"])')).filter(visible)
         : [];

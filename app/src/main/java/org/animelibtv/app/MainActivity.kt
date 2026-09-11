@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     @Volatile private var playerInFrame = false
     @Volatile private var frameInputMode = false
     @Volatile private var frameCssFullscreen = false
+    @Volatile private var videoCssFullscreen = false
     private var lastRemoteDispatchAt = 0L
     private var lastRemoteKeyCode = KeyEvent.KEYCODE_UNKNOWN
     private val navigationScript by lazy {
@@ -144,7 +145,10 @@ class MainActivity : Activity() {
             return true
         }
 
-        if (event.keyCode == KeyEvent.KEYCODE_MENU || event.keyCode == KeyEvent.KEYCODE_SETTINGS) {
+        if (event.keyCode == KeyEvent.KEYCODE_MENU ||
+            event.keyCode == KeyEvent.KEYCODE_SETTINGS ||
+            event.keyCode == KeyEvent.KEYCODE_INFO
+        ) {
             if (isPress) showAdBlockSettings()
             return true
         }
@@ -261,9 +265,18 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun setVideoCssFullscreen(enabled: Boolean) {
+        videoCssFullscreen = enabled
+        webView.evaluateJavascript(
+            "window.AnimeLibTv && window.AnimeLibTv.setVideoFullscreen($enabled)",
+            null,
+        )
+    }
+
     private fun handleBack() {
         when {
             fullscreenView != null -> hideFullscreenVideo()
+            videoCssFullscreen -> setVideoCssFullscreen(false)
             frameCssFullscreen -> setFrameCssFullscreen(false)
             playerInputMode -> {
                 playerInputMode = false
@@ -481,6 +494,11 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun toggleVideoFullscreen() {
+            runOnUiThread { setVideoCssFullscreen(!videoCssFullscreen) }
+        }
+
+        @JavascriptInterface
         fun enterFrameMode() {
             frameInputMode = true
             playerInputMode = false
@@ -514,6 +532,7 @@ class MainActivity : Activity() {
             playerInFrame = false
             frameInputMode = false
             frameCssFullscreen = false
+            videoCssFullscreen = false
             super.onPageStarted(view, url, favicon)
         }
 

@@ -82,8 +82,27 @@
         z-index: 2147483645 !important;
         background: #000 !important;
       }
+      .animelib-tv-video-fullscreen {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        z-index: 2147483645 !important;
+        background: #000 !important;
+      }
+      .animelib-tv-video-fullscreen video {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        object-fit: contain !important;
+      }
       html.animelib-tv-frame-fullscreen-open,
-      body.animelib-tv-frame-fullscreen-open {
+      body.animelib-tv-frame-fullscreen-open,
+      html.animelib-tv-video-fullscreen-open,
+      body.animelib-tv-video-fullscreen-open {
         overflow: hidden !important;
       }
     `;
@@ -455,6 +474,18 @@
       frame.focus();
       try { frame.contentWindow.focus(); } catch (_) {}
       mark(frame);
+    },
+    setVideoFullscreen: function (enabled) {
+      const existing = document.querySelector('.animelib-tv-video-fullscreen');
+      const media = document.querySelector('video');
+      const root = existing || (media && (
+        media.closest('#video, [data-video-player], .fp-player') || media.parentElement
+      ));
+      if (!root) return;
+      root.classList.toggle('animelib-tv-video-fullscreen', !!enabled);
+      document.documentElement.classList.toggle('animelib-tv-video-fullscreen-open', !!enabled);
+      if (document.body) document.body.classList.toggle('animelib-tv-video-fullscreen-open', !!enabled);
+      if (media) media.focus();
     }
   };
 
