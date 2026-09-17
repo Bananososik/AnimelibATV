@@ -41,7 +41,7 @@ class AdBlocker(context: Context) {
         val path = uri.path?.lowercase().orEmpty()
 
         if (host == "kodikplayer.com" || host.endsWith(".kodikplayer.com")) return false
-        if (host == "v5.animelib.org" || host.endsWith(".animelib.org")) return false
+        if (host == "animelib.org" || host.endsWith(".animelib.org")) return false
 
         if (host == "mc.yandex.ru" || host == "mc.webvisor.org") return true
         if (host == "an.yandex.ru" || host.endsWith(".yandexadexchange.net")) return true

@@ -40,6 +40,10 @@ class MainActivity : Activity() {
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var inputDialog: AlertDialog? = null
+    private var clearHistoryAfterLoad = false
+    private val homeUrl: String
+        get() = getSharedPreferences("app_settings", MODE_PRIVATE)
+            .getString("home_url", HOME_URL) ?: HOME_URL
     @Volatile private var playerInputMode = false
     @Volatile private var playerInFrame = false
     @Volatile private var frameInputMode = false
@@ -104,7 +108,7 @@ class MainActivity : Activity() {
         webView.requestFocus()
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
-            webView.loadUrl(HOME_URL)
+            webView.loadUrl(homeUrl)
         }
         updateManager.checkAtStartup()
     }
@@ -289,15 +293,17 @@ class MainActivity : Activity() {
                 webView.evaluateJavascript("window.AnimeLibTv && window.AnimeLibTv.leaveFrame()", null)
             }
             webView.canGoBack() -> webView.goBack()
-            !isHomeUrl(webView.url) -> webView.loadUrl(HOME_URL)
+            !isHomeUrl(webView.url) -> webView.loadUrl(homeUrl)
             else -> Unit
         }
     }
 
     private fun isHomeUrl(url: String?): Boolean {
         val uri = url?.let(Uri::parse) ?: return false
-        return uri.host.equals("v5.animelib.org", ignoreCase = true) &&
-            (uri.path == "/ru" || uri.path == "/ru/")
+        val home = Uri.parse(homeUrl)
+        return uri.scheme.equals(home.scheme, ignoreCase = true) &&
+            uri.host.equals(home.host, ignoreCase = true) && uri.port == home.port &&
+            uri.path.orEmpty().trimEnd('/') == home.path.orEmpty().trimEnd('/')
     }
 
     private fun injectTvNavigation() {
@@ -329,7 +335,7 @@ class MainActivity : Activity() {
             val selected = values.indexOf(adBlocker.mode)
 
             AlertDialog.Builder(this)
-                .setTitle(R.string.adblock_title)
+                .setTitle(R.string.settings_title)
                 .setSingleChoiceItems(modes, selected) { dialog, which ->
                     val changed = adBlocker.mode != values[which]
                     adBlocker.mode = values[which]
@@ -340,11 +346,76 @@ class MainActivity : Activity() {
                     }
                 }
                 .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.site_url_title) { _, _ -> showSiteUrlSettings() }
                 .setNeutralButton(R.string.check_updates) { _, _ ->
                     updateManager.checkForUpdates(manual = true)
                 }
                 .show()
         }
+    }
+
+    private fun showSiteUrlSettings() {
+        inputDialog?.dismiss()
+        val editor = EditText(this).apply {
+            setText(homeUrl)
+            setSelection(text.length)
+            hint = "v4.animelib.org"
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.site_url_title)
+            .setView(editor)
+            .setPositiveButton(R.string.site_url_save, null)
+            .setNeutralButton(R.string.site_url_default, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        fun save() {
+            val raw = editor.text.toString().trim()
+            val candidate = if (raw.contains("://")) raw else "https://$raw"
+            val parsed = runCatching { java.net.URI(candidate) }.getOrNull()
+            if (raw.isBlank() || parsed == null ||
+                !parsed.scheme.equals("https", ignoreCase = true) ||
+                parsed.host.isNullOrBlank() || parsed.rawUserInfo != null ||
+                parsed.port < -1 || parsed.port > 65535
+            ) {
+                editor.error = getString(R.string.site_url_invalid)
+                return
+            }
+            val normalized = if (parsed.rawPath.isNullOrEmpty() || parsed.rawPath == "/") {
+                Uri.parse(candidate).buildUpon().path("/ru")
+                    .apply { if (parsed.rawQuery == null) appendQueryParameter("section", "home-updates") }
+                    .build().toString()
+            } else candidate
+            getSharedPreferences("app_settings", MODE_PRIVATE).edit()
+                .putString("home_url", normalized).apply()
+            hideFullscreenVideo()
+            clearHistoryAfterLoad = true
+            dialog.dismiss()
+            webView.loadUrl(normalized)
+        }
+        editor.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                save()
+                true
+            } else false
+        }
+        dialog.setOnDismissListener { if (inputDialog === dialog) inputDialog = null }
+        inputDialog = dialog
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { save() }
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            editor.setText(HOME_URL)
+            editor.setSelection(editor.text.length)
+            editor.error = null
+        }
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        editor.requestFocus()
+        editor.postDelayed({
+            getSystemService(InputMethodManager::class.java)
+                .showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+        }, 150)
     }
 
     private fun dispatchTab(backwards: Boolean) {
@@ -538,6 +609,10 @@ class MainActivity : Activity() {
 
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
+            if (clearHistoryAfterLoad) {
+                view.clearHistory()
+                clearHistoryAfterLoad = false
+            }
             injectTvNavigation()
         }
 

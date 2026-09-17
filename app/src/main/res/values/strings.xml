@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">AnimeLib TV</string>
     <string name="adblock_title">Блокировка рекламы</string>
+    <string name="settings_title">Настройки приложения</string>
     <string name="adblock_standard">Осторожная (рекомендуется)</string>
     <string name="adblock_enhanced">Усиленная</string>
     <string name="adblock_off">Выключена</string>
@@ -19,4 +20,8 @@
     <string name="update_downloading">Загружаем обновление…</string>
     <string name="update_download_failed">Не удалось скачать или проверить обновление</string>
     <string name="input_value_title">Введите значение</string>
+    <string name="site_url_title">Адрес сайта</string>
+    <string name="site_url_save">Сохранить и открыть</string>
+    <string name="site_url_default">По умолчанию</string>
+    <string name="site_url_invalid">Введите корректный HTTPS-адрес, например v4.animelib.org</string>
 </resources>
